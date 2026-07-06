@@ -1,0 +1,6 @@
+{
+  "name": "Ableton ALS Timing Analyzer",
+  "description": "Ein interaktives Tool zur Analyse von MIDI-Timings, Swing-Faktoren und Drift aus Ableton Live .als Dateien mit SQLite/CSV Export und Python-Skript Generator.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
