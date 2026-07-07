@@ -979,16 +979,20 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           <div>
             <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Vielfalt & Stilbalance</span>
             {sortedSessions.length > 0 ? (
-              <div className="text-xs font-bold text-slate-200 space-y-1 mt-1">
-                <div className="flex justify-between">
-                  <span className="text-emerald-600">Melodisch:</span>
-                  <span>{sortedSessions.filter(s => s.styleCategory === "Melodisch").length} S.</span>
+                <div className="text-xs font-bold text-slate-200 space-y-1 mt-1">
+                  <div className="flex justify-between">
+                    <span className="text-emerald-600">Melodisch:</span>
+                    <span>{sortedSessions.filter(s => s.styleCategory === "Melodisch").length} S.</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-indigo-600">Harmonisch:</span>
+                    <span>{sortedSessions.filter(s => s.styleCategory === "Harmonisch").length} S.</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-amber-600">Rhythmisch:</span>
+                    <span>{sortedSessions.filter(s => s.styleCategory === "Rhythmisch").length} S.</span>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-indigo-600">Harmonisch:</span>
-                  <span>{sortedSessions.filter(s => s.styleCategory === "Harmonisch").length} S.</span>
-                </div>
-              </div>
             ) : (
               <span className="text-sm font-bold text-slate-400 block mt-1">—</span>
             )}

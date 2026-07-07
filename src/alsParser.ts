@@ -67,11 +67,16 @@ function dateToStr(d: Date): string {
 export function detectKey(notes: MidiNote[]): string {
   if (notes.length === 0) return "Unbekannt";
 
+  // Schlagzeug-Noten (Standard-MIDI-Kit ~Key 24-84) von harmonischer Analyse ausschließen
+  const drumKeyRange = (k: number) => k >= 24 && k <= 84;
+  const melodicNotes = notes.filter(n => !drumKeyRange(n.key));
+  if (melodicNotes.length === 0) return "Percussion";
+  if (melodicNotes.length < notes.length * 0.1) return "Percussion";
+
   // 12 Pitch Classes (C, C#, D, D#, E, F, F#, G, G#, A, A#, H)
   const pitchWeights = new Array(12).fill(0);
-  notes.forEach(note => {
+  melodicNotes.forEach(note => {
     const pc = note.key % 12;
-    // Längere und lautere Noten gewichten wir stärker!
     const weight = Math.max(0.1, note.duration) * (note.velocity / 100);
     if (!isNaN(weight)) {
       pitchWeights[pc] += weight;
@@ -197,13 +202,45 @@ function estimateBpmForNotes(notes: MidiNote[], nominalTempo: number): number {
   return parseFloat(bestBpm.toFixed(1));
 }
 
+function estimateGridFromNotes(notes: MidiNote[]): number {
+  if (notes.length < 5) return 0.25;
+  const sorted = [...notes].sort((a, b) => a.time - b.time);
+  const intervals: number[] = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const d = sorted[i].time - sorted[i - 1].time;
+    if (d > 0.01 && d < 4) intervals.push(d);
+  }
+  if (intervals.length < 3) return 0.25;
+  const buckets: Map<number, number> = new Map();
+  const candidates = [0.0625, 0.125, 0.1875, 0.25, 0.375, 0.5];
+  for (const iv of intervals) {
+    for (const g of candidates) {
+      const ratio = Math.round(iv / g);
+      if (ratio >= 1 && Math.abs(iv - ratio * g) < g * 0.12) {
+        buckets.set(g, (buckets.get(g) || 0) + 1);
+        break;
+      }
+    }
+  }
+  let bestG = 0.25;
+  let bestN = 0;
+  for (const [g, n] of buckets) {
+    if (n > bestN) { bestN = n; bestG = g; }
+  }
+  return bestG;
+}
+
+export function estimateGrid(notes: { time: number }[]): number {
+  return estimateGridFromNotes(notes as MidiNote[]);
+}
+
 function regridNotes(notes: MidiNote[], bpm: number, nominalTempo: number): MidiNote[] {
   const bpmRatio = bpm / nominalTempo;
   const msPerBeat = 60000 / bpm;
+  const grid = estimateGridFromNotes(notes);
   return notes.map(n => {
     const playedBeats = n.time * bpmRatio;
     const adjustedDuration = n.duration * bpmRatio;
-    const grid = 0.25;
     const nearestGrid = Math.round(playedBeats / grid) * grid;
     const gridOffset = playedBeats - nearestGrid;
     return {
@@ -222,7 +259,7 @@ export function analyzeSessionMidiStats(
   nominalTempo: number
 ): {
   estimatedBpm: number;
-  styleCategory: "Melodisch" | "Harmonisch";
+  styleCategory: "Melodisch" | "Harmonisch" | "Rhythmisch";
   structureCategory: "Improvisation" | "Klassisches Stück";
   estimatedKey: string;
   notes: MidiNote[];
@@ -275,7 +312,11 @@ export function analyzeSessionMidiStats(
     if (hasOverlap) simultaneousCount++;
   }
   const overlapRatio = limitedNotes.length > 0 ? simultaneousCount / limitedNotes.length : 0;
-  const styleCategory = overlapRatio > 0.45 ? "Harmonisch" : "Melodisch";
+  const drumKeyRange = (k: number) => k >= 24 && k <= 84;
+  const drumRatio = adjustedNotes.length > 0
+    ? adjustedNotes.filter(n => drumKeyRange(n.key)).length / adjustedNotes.length
+    : 0;
+  const styleCategory = drumRatio > 0.6 ? "Rhythmisch" : overlapRatio > 0.45 ? "Harmonisch" : "Melodisch";
 
   const velocities = limitedNotes.map(n => n.velocity);
   const meanVel = velocities.reduce((sum, v) => sum + v, 0) / (velocities.length || 1);

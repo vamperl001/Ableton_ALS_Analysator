@@ -6,23 +6,42 @@
 
 ## 1. Ausgangslage & Problemstellung
 
-Ein Klavierschüler übt täglich auf einem digitalen Piano (Yamaha) und zeichnet seine Sessions in Ableton Live auf. Nach sechs Monaten Unterricht stellte sich die Frage:
+**Kontext:** Der Autor unterrichtet seit Jahren Schlagzeug an einer Musikschule. Der Unterricht wird in drei Räumen mit unterschiedlicher Ausstattung durchgeführt:
 
-> **Lässt sich musikalischer Fortschritt objektiv anhand von MIDI-Daten messen?**
+- **Raum 1 (Hauptraum):** Casio Digitalpiano → Ableton Live (3,5 Tage/Woche)
+- **Raum 2:** Yamaha Digitalpiano → Ableton Live (sporadisch)
+- **Raum 3:** Casio Digitalpiano → Ableton Live (sporadisch)
 
-Ziel war es, aus den Rohdaten (Ableton Live Projektdateien, .als) metrische Profile zu extrahieren, die Entwicklung über die Zeit sichtbar zu machen und eine Plattform zu schaffen, die diese Analyse interaktiv darstellt.
+Während des Unterrichts spielt der Lehrer Klavierbegleitung zu den Schlagzeug-Übungen der Schüler. Die MIDI-Daten aller Instrumente werden in Ableton Live aufgezeichnet.
+
+Nach einem halben Jahr Unterricht mit **75+ Schlagzeug-Schülern** stellte sich die Frage:
+
+> **Lässt sich musikalischer Fortschritt von Schlagzeug-Schülern objektiv anhand von MIDI-Daten messen und visualisieren?**
 
 ### Datenbasis
-- ~44 Sessions über 6 Monate (Januar–Juni 2026)
-- ~200.000 MIDI-Noten-Events
-- Format: Ableton Live Sets (.als), Standard-MIDI-Dateien (.mid/.midi), GarageBand-Projekte (.band)
-- Tägliche Übungseinheiten von 15–90 Minuten
+- **~75+ Schüler** (variable Teilnahme, daher nicht exakt)
+- **>1,3 Millionen MIDI-Noten**
+- **~44 Sessions** à **6–9 Stunden**, unterteilt in 30/45-Minuten-Unterrichtsslots
+- **Zeitraum:** Januar – Juni 2026
+- **Format:** Ableton Live Sets (.als), Standard-MIDI-Dateien (.mid/.midi)
+- **3 Fehltage** aufgrund nicht gelöstem .band-Import vom iPad (GarageBand-Dateien der Schüler)
+
+### Datenbesonderheit
+Die MIDI-Daten enthalten **zwei Spieler** gleichzeitig:
+1. **Lehrer (Autor):** Klavierbegleitung — präzises Timing, Akkorde, Melodien
+2. **Schüler:** Schlagzeug (via E-Drums/MIDI-Trigger) — Kick, Snare, HiHat, Becken etc.
+
+Die Trennung dieser beiden Spieler war eine der zentralen technischen Herausforderungen.
 
 ---
 
 ## 2. Technologieentscheidungen
 
-### Phase 1: Firebase (Proof of Concept)
+### Phase 1: Google AI Studio (Prototyp)
+
+Der erste funktionale Entwurf entstand in **Google AI Studio** — ein schneller Prototyp, der die grundlegende Machbarkeit zeigte. Die Einschränkungen der Plattform (kein persistenter State, keine Datenbank) machten jedoch einen Umzug nötig.
+
+### Phase 2: Firebase Firestore (Proof of Concept)
 
 | Entscheidung | Begründung |
 |---|---|
@@ -31,34 +50,28 @@ Ziel war es, aus den Rohdaten (Ableton Live Projektdateien, .als) metrische Prof
 | Recharts | React-native Charting, einfache Integration |
 | TypeScript | Typsicherheit für komplexe Datenstrukturen |
 
-**Erkenntnis:** Firebase wurde zu teuer und unflexibel. Die Firestore-Dokumente waren auf 1MB begrenzt — eine einzelne Session mit 50.000 MIDI-Noten sprengte dieses Limit. Workaround war nötig, aber nicht nachhaltig.
+**Problem:** Firestore-Dokumente sind auf 1MB begrenzt. Eine einzelne Session mit >1,3 Mio MIDI-Noten sprengt dieses Limit um Größenordnungen. Firebase wurde zu teuer und unflexibel.
 
-### Phase 2: Eigenes Backend (SQLite)
+### Phase 3: Eigenes Backend (Python FastAPI + SQLite)
 
 | Entscheidung | Begründung |
 |---|---|
 | Python FastAPI | Async-fähig, schnell, nah an der Standardbibliothek |
-| SQLite | Kein Server nötig, portabel, einfaches Deployment |
-| Docker + Docker Compose | Reproduzierbare Umgebung, Single-Binary-Deployment |
-| Single Container | nginx entfernt, FastAPI serviert auch statische Dateien |
+| SQLite | Kein Server nötig, portabel, perfekt für lokales Setup |
+| Docker + Docker Compose | Reproduzierbare Umgebung |
+| Single Container | FastAPI serviert API + statische Frontend-Dateien, kein nginx |
 
-**Architektur-Entscheidung:** Statt nginx + uvicorn wurde FastAPI direkt zum Static-File-Server gemacht. Spart Komplexität und einen Container.
+### Phase 4: Supabase PostgreSQL (Evaluation)
 
-### Phase 3: Supabase PostgreSQL
+Für eine mögliche Cloud-Deployment-Strategie wurde Supabase PostgreSQL getestet. Die Daten wurden erfolgreich migriert (asyncpg, Connection Pooler via pgbouncer). Da GitHub Pages jedoch kein Backend hosten kann und der eigene Docker-Server die Daten lokal hält, wurde **zurück auf SQLite** gewechselt.
 
-| Entscheidung | Begründung |
-|---|---|
-| Supabase PostgreSQL | Vollständig gehostet, 500MB kostenlos, SQL pur |
-| asyncpg | Performanter PostgreSQL-Treiber, Pooling, Prepared Statements |
-| Connection Pooler (pgbouncer) | Supabase-interne Verbindungsverwaltung |
-
-**Warum der Wechsel?** SQLite liegt als Datei auf dem Server — für eine Deployment-Strategie über GitHub (CI/CD, öffentliche URL) brauchte es eine extern erreichbare Datenbank. Supabase bietet das als Managed Service an.
+**Fazit:** Für das aktuelle Setup (eigener Server, Docker) ist SQLite die optimale Lösung. Der Supabase-Code bleibt als Option für zukünftige Cloud-Szenarien erhalten.
 
 ---
 
 ## 3. Zentrale Herausforderungen & Lösungen
 
-### 3.1 200.000 Noten im Browser
+### 3.1 >1,3 Millionen Noten im Browser
 
 **Problem:** `Math.max(...array)` und `Math.min(...array)` werfen einen Stack Overflow bei Arrays >125.000 Elementen.
 
@@ -78,56 +91,69 @@ const maxTime = notes.reduce((max, n) => Math.max(max, n.time), 0);
 
 **Problem:** Die List-API aller Sessions lief 44 Sekunden und übertrug 335MB — weil sie `notes_json` für jede Session mitsandte.
 
-**Lösung:** 
+**Lösung:**
 - Listen-Endpoint verwendet `SELECT` mit konkreten Spalten (kein `SELECT *`)
 - `notes_json`, `sliding_tempo_json`, `pedal_analysis_json` werden nur bei gezieltem Aufruf einer Session geladen
-- Frontend hat `loadSessionNotesFromCloud()` für lazy-load per Button oder useEffect
+- Frontend hat `loadSessionNotesFromCloud()` für lazy-load per useEffect
 
 ```python
-# Langsam:
+# Vorher:
 SELECT * FROM sessions
 # → 335MB, 44s für 41 Sessions
 
-# Schnell:
+# Nachher:
 SELECT id, file_name, session_date, tempo, notes_count, ...
 # → 25KB, 0.3s
 ```
 
-### 3.3 .band Import von iPad
+### 3.3 Teacher/Student Split per k-means Clustering
 
-**Problem:** GarageBand-Dateien (.band) sind Zip-Archive. iPad Safari blockierte unbekannte MIME-Types beim Datei-Upload.
+**Problem:** Lehrer und Schüler spielen gleichzeitig — die MIDI-Noten sind in einem Datenstrom ohne Absender-Kennzeichnung.
 
-**Lösung:**
-- JSZip entpackt .band-Archive clientseitig und extrahiert alle .mid-Dateien
-- `accept="*/*"` auf dem File-Input umgeht Safaris Filter
-- Alle MIDI-Tracks innerhalb eines .band werden zu einer Session zusammengeführt
+**Lösung:** k-means-Clustering (k=2) auf die absolute Grid-Abweichung (`|gridOffsetMs|`):
 
-**Workaround (vom Nutzer gewählt):** MIDI-Dateien direkt aus GarageBand exportieren und umbenennen.
-
-### 3.4 Supabase Migration
-
-**Problem:** Supabase PostgreSQL akzeptiert keine vorbereiteten Statements (Prepared Statements) im Connection Pooler-Modus. 
-
-**Lösung:**
-- `statement_cache_size=0` beim asyncpg-Verbindungsaufbau
-- Typannotationen mit `::text`, `::timestamptz` in SQL-Queries
-- Batch-Insert über einzelne `INSERT ... ON CONFLICT` Statements
-
-```python
-pg = await asyncpg.connect(dsn, statement_cache_size=0)
-await pg.execute("INSERT INTO sessions (...) VALUES ($1::text, $2::text, ...)")
+```typescript
+// K-Means auf |gridOffsetMs| → zwei Cluster:
+// Cluster 0 = Lehrer (präziser, kleiner Drift)
+// Cluster 1 = Schüler (größerer Drift, Schlagzeug-Timing)
+// Annahme: Lehrer ist präziser → kleinerer Mittelwert
 ```
 
-### 3.5 Datenmodell-Entwicklung
+Die Clusterzentren trennen zuverlässig die beiden Spieler, da der Lehrer erfahrungsgemäß ein stabileres Timing hat als die Schüler.
+
+### 3.4 .band Import vom iPad (ungelöst)
+
+**Problem:** GarageBand-Dateien (.band) sind Zip-Archive. Der Parser (JSZip) extrahiert die enthaltenen .mid-Dateien korrekt, aber der Import vom iPad Safari schlug fehl. Das Problem war **nicht der allgemeine Upload** (andere Dateitypen funktionieren), sondern spezifisch die .band-Handhabung im mobilen Safari.
+
+**Status:** Ungelöst. Ca. 3 Tage fehlen deshalb im Datensatz. Workaround: MIDI-Dateien direkt aus GarageBand exportieren.
+
+### 3.5 Grid-Raster (1/16tel)
+
+Das Grid ist **mathematisch fest auf 1/16tel = 0.25 Beats** gesetzt, nicht aus der ALS-Datei ausgelesen. Alle Noten werden auf diesen Raster quantisiert:
+
+```typescript
+const grid = 0.25;
+const nearestGrid = Math.round(playedBeats / grid) * grid;
+const gridOffset = playedBeats - nearestGrid; // Positiv = zu spät, negativ = zu früh
+```
+
+Da der Lehrer und fortgeschrittene Schüler auch Notenwerte kleiner 1/16tel spielen (32tel, Triolen), werden diese auf das nächstgelegene 16tel-Raster abgebildet. Eine dynamische Grid-Ableitung aus dem kürzesten Notenabstand wäre eine mögliche Verbesserung.
+
+### 3.6 Skalen-Klassifikation & Drums
+
+**Problem:** Die Tonleiter-Analyse klassifizierte alle Noten nach Dur/Moll/Pentatonisch — ignorierte aber, dass Schlagzeug-Noten (Kick=C2, Snare=D2, HiHat=F#2, etc.) keine melodische Funktion haben.
+
+**Lösung:** Noten im Drum-Range (MIDI-Key 36–84, typisches Schlagzeug-Spektrum) werden als `"Percussion"` kategorisiert und von der harmonischen Analyse ausgeschlossen.
+
+### 3.7 Datenmodell-Entwicklung
 
 Das Datenmodell wuchs organisch mit den Metriken:
 
 ```
-Phase 1 (Firebase):    fileName, date, tempo, notes (roh)
-Phase 2 (SQLite):      + estimatedBpm, avgDriftMs, avgSwing
-Phase 3 (Erweitert):   + velocitySpread, polyphony, focusScore
-Phase 4 (Lehrer/Sch.): + teacherStudentSplit, slidingTempo, pedalAnalysis
-Phase 5 (PostgreSQL):  Umstellung auf TIMESTAMPTZ, JSON-Felder
+Phase 1 (Google AI Studio): dateiName, datum, tempo, noten (roh)
+Phase 2 (Firebase):         + geschaetztesBpm, driftMs, swing
+Phase 3 (SQLite):           + velocitySpread, polyphonie, focusScore
+Phase 4 (Erweitert):        + teacherStudentSplit, slidingTempo, pedalAnalyse
 ```
 
 ---
@@ -135,30 +161,23 @@ Phase 5 (PostgreSQL):  Umstellung auf TIMESTAMPTZ, JSON-Felder
 ## 4. Architektur-Entwicklung
 
 ```
-v1: Firebase + React SPA
+v1: Google AI Studio
+    ┌──────────────────────┐
+    │ Google AI Studio     │
+    │ (Prototyp, kein DB)  │
+    └──────────────────────┘
+
+v2: Firebase + React SPA
     ┌─────────┐    ┌──────────┐
     │ Browser │───▶│ Firebase │
     │  SPA    │    │ Firestore│
     └─────────┘    └──────────┘
 
-v2: nginx + uvicorn + SQLite (Docker)
-    ┌─────────┐    ┌──────┐    ┌────────┐    ┌───────┐
-    │ Browser │───▶│nginx │───▶│uvicorn │───▶│SQLite │
-    │  SPA    │    │:80   │    │:8000   │    │:data/ │
-    └─────────┘    └──────┘    └────────┘    └───────┘
-
-v3: FastAPI single container + SQLite
+v3: FastAPI + SQLite (aktuell)
     ┌─────────┐    ┌────────────┐    ┌───────┐
     │ Browser │───▶│ FastAPI    │───▶│SQLite │
-    │  SPA    │    │ :80        │    │:data/ │
+    │  SPA    │    │ :80 + API  │    │/data/ │
     └─────────┘    │ + Static   │    └───────┘
-                   └────────────┘
-
-v4 (aktuell): FastAPI + Supabase PostgreSQL (Docker)
-    ┌─────────┐    ┌────────────┐    ┌─────────────────┐
-    │ Browser │───▶│ FastAPI    │───▶│ Supabase (PG)   │
-    │  SPA    │    │ :80        │    │ Pooler :6543    │
-    └─────────┘    │ + Static   │    └─────────────────┘
                    │ + Axinio   │
                    └────────────┘
 ```
@@ -168,32 +187,32 @@ v4 (aktuell): FastAPI + Supabase PostgreSQL (Docker)
 ## 5. Design-Entscheidungen
 
 ### Dark Theme
-- Dark Mode von Anfang an (passend zum Ableton Live Look)
-- Alle Farbkonstanten in `theme.ts` zentralisiert (keine Magic Numbers in Komponenten)
-- Späte Vereinheitlichung: CalendarView, SessionComparison, Charts hatten ursprünglich **light classes** — nachträglich auf `text-slate-100`, `bg-slate-800` etc. umgestellt
+- Dark Mode (angelehnt an Ableton Live)
+- Farbkonstanten zentral in `theme.ts` (keine Magic Numbers)
+- Umstellung: initial hatten viele Komponenten **light classes** — nachträglich auf Dark vereinheitlicht
 
-### Kein Auto-Save
-- Sessions werden manuell per Button gespeichert (explizite Aktion statt automatischer Sync)
-- Begründung: Der Nutzer importiert oft viele Dateien auf einmal und will selektiv speichern
+### Manuelles Speichern
+- Sessions werden pro Button gespeichert (kein Auto-Save)
+- Da das Halbjahr vorbei ist, können die Daten statisch bleiben
+- Auto-Save kann später entfernt werden
 
-### Progressives Batch-Loading
-- Die "ALLE AUS DB LADEN"-Funktion lädt Sessions nacheinander statt alle auf einmal
-- Verhindert Timeout des `/sessions/full`-Endpoints (>30s bei 41 Sessions)
-- Nutzer sieht Fortschrittsanzeige `(3/41)`
+### Progressive Batch-Loading
+- "ALLE AUS DB LADEN" lädt Sessions einzeln statt in einem Request
+- Verhindert Timeout bei großen Datenmengen
 
 ---
 
 ## 6. Metriken im Detail
 
 ### Timing Drift
-Die fundamentale Metrik. Jede MIDI-Note hat eine `time` in Beats. Die `nearestGrid` ist der nächste Grid-Punkt (1/16 Note). 
+Die fundamentale Metrik. Jede MIDI-Note hat eine `time` in Beats. `nearestGrid` ist der nächste 1/16tel-Punkt.
 
 ```
 drift_beats = time - nearestGrid
 drift_ms = (drift_beats / tempo) * 60 * 1000
 ```
 
-Ein positiver Drift = die Note kommt zu spät. Negativ = zu früh.
+Positiver Drift = Note kommt zu spät. Negativ = zu früh (vorgezogen).
 
 ### Focus Score
 Gewichteter Index (0–100):
@@ -206,12 +225,16 @@ score = (
 ) * 100
 ```
 
+### Teacher/Student Split
+k-means-Clustering (k=2) auf `|gridOffsetMs|`. Annahme: Lehrer hat kleineren Drift → Cluster 0 = Lehrer, Cluster 1 = Schüler.
+
 ### Style Classification
-Basierend auf Notendichte und Polyphonie:
-- **Melodisch:** Wenige Noten, große Intervalle
-- **Rhythmisch:** Gleichmäßige Notenabstände, repetitive Patterns
-- **Polyphon:** Viele gleichzeitige Noten, komplexe Akkorde
+Basierend auf Notendichte, Polyphonie und Intervallstruktur:
+- **Melodisch:** Wenige Noten, große Intervalle (typisch Klavierbegleitung)
+- **Rhythmisch:** Gleichmäßige, repetitive Patterns (typisch Schlagzeug)
+- **Polyphon:** Viele gleichzeitige Noten, Akkorde
 - **Hybrid:** Mischformen
+- **Percussion:** Hauptsächlich Drum-Noten (MIDI-Key 36-84)
 
 ---
 
@@ -220,66 +243,85 @@ Basierend auf Notendichte und Polyphonie:
 | Komponente | Technologie |
 |---|---|
 | Container | Docker, Alpine Linux |
-| Host | Linux Server, Tailscale |
-| Domain | gregsplace (Tailscale MagicDNS) |
+| Host | Dedizierter Linux-Server |
+| Netzwerk | Tailscale (gregsplace) |
 | Port | 8090 (Host) → 80 (Container) |
-| DB | Supabase PostgreSQL (extern) |
-| Persistenz | Docker Volume `midi_data:/data` |
-| CI/CD | Manuell via `docker compose up --build` |
+| Datenbank | SQLite in Docker-Volume `midi_data:/data` |
+| Aktuelle Größe | ~539MB (41 Sessions, >1,3 Mio Noten) |
 
 ### Entwicklungs-Workflow
-1. Lokale Änderungen in `src/` oder `backend/`
-2. `docker compose build app` (→ Vite-Build + pip install)
-3. `docker compose up -d --force-recreate app`
-4. Health-Check via `curl localhost:8090/health`
-5. Hard Refresh im Browser (Strg+F5/Cmd+Shift+R)
+```
+git pull → Änderungen in src/ oder backend/
+docker compose build app
+docker compose up -d --force-recreate app
+curl localhost:8090/health
+Hard Refresh (Strg+F5)
+```
 
 ---
 
 ## 8. Ausblick
 
 ### Kurzfristig
-- iPad .band-Import finalisieren
-- Weitere Analysen: Übungsdauer, Hand-Unabhängigkeit, Tonart-Treue
-- GitHub Actions CI für automatischen Build
+- Grid dynamisch aus Notenabstand ableiten (32tel/Triolen-Unterstützung)
+- Skalen-Klassifikation für Drums finalisieren
+- Auto-Save entfernen, Daten statisch halten
+
+### Mittelfristig
+- .band-Import vom iPad final beheben
+- Fehlende 3 Tage nachimportieren
 
 ### Langfristig
-- Echtzeit-MIDI-Overlay (WebSocket von Ableton)
-- Multi-User (Lehrer sieht alle Schüler)
-- Audio-basierte Metriken (Lautstärke, Klangfarbe via FFT)
+- **RAG-System:** MIDI-Daten + OneNote-Notizen + Unterrichtsmitschnitte
+- **Multi-Schüler-Dashboard:** Lehrer sieht alle 75+ Schüler
+- **Oracle-DB:** Falls Cloud-Deployment nötig wird
+- **Server-Tunnel** für öffentlichen Zugriff (Tailscale Funnel / Cloudflare Tunnel)
 
 ---
 
-## 9. Dateistruktur (relevant)
+## 9. Dateistruktur
 
 ```
 /
-├── frontend/
-│   ├── src/
-│   │   ├── App.tsx                  # Hauptkomponente, Routing, State
-│   │   ├── alsParser.ts             # ALS/MIDI/Band-Parser
-│   │   ├── firebase.ts              # API-Client (REST calls)
-│   │   ├── theme.ts                 # Zentrale Farbkonstanten
-│   │   └── components/
-│   │       ├── AdvancedCharts.tsx
-│   │       ├── CalendarView.tsx
-│   │       ├── ProgressionChart.tsx
-│   │       ├── SessionComparison.tsx
-│   │       ├── SvgCharts.tsx
-│   │       ├── CreativeVisualizer.tsx
-│   │       └── StudentProgress.tsx
-│   └── index.html                   # Titel geändert
+├── src/
+│   ├── App.tsx                  # Hauptkomponente, State-Management
+│   ├── alsParser.ts             # ALS/MIDI/Band-Parser + Metriken
+│   ├── firebase.ts              # REST-API-Client (fetch)
+│   ├── theme.ts                 # Zentrale Farbkonstanten
+│   └── components/
+│       ├── AdvancedCharts.tsx    # Heatmaps, Histogramme
+│       ├── CalendarView.tsx      # Kalender-Übersicht
+│       ├── ProgressionChart.tsx  # Metrik-Entwicklung über Zeit
+│       ├── SessionComparison.tsx # Side-by-Side Vergleich
+│       ├── SvgCharts.tsx         # Benutzerdefinierte SVG-Charts
+│       ├── CreativeVisualizer.tsx# Kreativ-Visualisierung
+│       └── StudentProgress.tsx   # Einzelschüler-Ansicht
 ├── backend/
-│   ├── main.py                      # FastAPI-App, Routing, Axinio-Proxy
-│   ├── supabase_db.py               # asyncpg-PostgreSQL-Zugriff
-│   ├── config.py                    # DB-Konfiguration
+│   ├── main.py                  # FastAPI-App, Routing, Axinio-Proxy
+│   ├── supabase_db.py           # PostgreSQL-Zugriff (optional)
+│   ├── config.py                # DB-Konfiguration
 │   └── requirements.txt
-├── Dockerfile                       # Multi-Stage-Build
-├── docker-compose.yml               # Single-Container-Deployment
-└── .env.example                     # Vorlage für Umgebungsvariablen
+├── Dockerfile                   # Multi-Stage-Build
+├── docker-compose.yml           # Single-Container
+├── index.html                   # Titel "Midi Analyse..."
+└── README.md
 ```
 
 ---
 
-*Dokumentation erstellt im Juli 2026 für die Master-Bewerbung Medientechnik.*
+## 10. Technisches Glossar
+
+| Begriff | Erklärung |
+|---|---|
+| **ALS** | Ableton Live Set — Projektdatei von Ableton Live |
+| **gridOffsetMs** | Zeitliche Abweichung einer Note vom Raster in Millisekunden |
+| **k-means (k=2)** | Clustering-Algorithmus, teilt Daten in zwei Gruppen |
+| **MIDI** | Musical Instrument Digital Interface — digitales Notenformat |
+| **Recharts** | React-Bibliothek für responsive Diagramme |
+| **SPA** | Single Page Application — Client-seitig gerenderte Web-App |
+| **Vite** | Moderner Build-Tool für JavaScript/TypeScript |
+
+---
+
+*Dokumentation erstellt Juli 2026 für die Master-Bewerbung Medientechnik.*
 *Projekt: Midi_Analysator — github.com/vamperl001/Midi_Analysator*

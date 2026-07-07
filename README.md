@@ -1,37 +1,63 @@
 # MIDI Analyse — Halbes Jahr Musikunterricht
 
-**Timing-Analyse von MIDI-Klavierdaten aus dem Ableton Live Ökosystem**
+**Metriken-gestützte Fortschrittsanalyse von 75+ Schlagzeug-Schülern im Einzelunterricht**
 
-Ein webbasiertes Analyse-Tool, das MIDI-Noten aus Ableton Live Projekten (.als, .mid, .band) extrahiert und mit über 20 Metriken das rhythmische und musikalische Profil eines Klavierschülers über 6 Monate Unterricht vermisst.
+Ein webbasiertes Analyse-Tool, das MIDI-Noten aus Ableton Live Projekten (.als, .mid, .band) extrahiert und mit über 20 Metriken das rhythmische und musikalische Profil von **75+ Schlagzeug-Schülern** über ein **halbes Jahr** vermisst. Der Lehrer begleitet die Schüler am Klavier — daher enthält der Datensatz sowohl Schüler- als auch Lehrer-Daten.
 
-> **Status:** Produktiv | **Backend:** Python FastAPI + Supabase PostgreSQL | **Frontend:** React + TypeScript + Vite | **Laufzeit:** Docker
+> **Status:** Produktiv | **Backend:** Python FastAPI + SQLite | **Frontend:** React + TypeScript + Vite | **Laufzeit:** Docker
 
 ---
 
 ## Über das Projekt
 
-Dieses Projekt entstand aus der konkreten Fragestellung: *Lässt sich der Fortschritt eines Klavierschülers in den ersten sechs Monaten Unterricht objektiv anhand von MIDI-Daten messen?*
+**Erstentwurf:** Google AI Studio  
+**Weiterentwicklung:** Eigenes Backend + React SPA
 
-Der Schüler spielte täglich auf einem digitalen Piano (Yamaha), das MIDI-Daten an Ableton Live sendete. Aus über 40 Sessions wurden rund 200.000 MIDI-Noten analysiert.
+**Fragestellung:** *Lässt sich der Fortschritt von Schlagzeug-Schülern in den ersten sechs Monaten Unterricht objektiv anhand von MIDI-Daten messen?*
 
-### Analysen
+Die Aufnahmen entstanden in drei verschiedenen Räumen mit unterschiedlichen Keyboards:
+- **Raum 1 (Hauptraum):** Casio Piano — ca. 3,5 Tage/Woche, der Großteil der Daten
+- **Raum 2:** Yamaha Piano — sporadisch
+- **Raum 3:** Casio Piano — sporadisch
+
+Der Lehrer (Autor) spielt Klavierbegleitung zu den Schlagzeug-Übungen der Schüler. Daher enthalten die MIDI-Daten sowohl die **Lehrer-Noten (Klavier)** als auch die **Schüler-Noten (Schlagzeug)**.
+
+### Datengrundlage
+- **~75+ Schüler** (variable Teilnehmerzahl)
+- **>1,3 Millionen MIDI-Noten**
+- **~44 Sessions** á **6–9 Stunden**, unterteilt in 30/45-Minuten-Slots
+- **Zeitraum:** Januar – Juni 2026
+- **Aufnahme-Setup:** Ableton Live (MIDI-Aufnahme über Casio/Yamaha Digitalpianos)
+- **Ca. 3 Fehltage** wegen ungelöstem .band-Import vom iPad
+
+### Zukunftsplanung
+Verknüpfung der MIDI-Daten mit:
+- **Unterrichtsmitschnitten** (Audio/Video)
+- **OneNote-Unterrichtsnotizen**
+- **RAG-System** für individuelle Fortschrittsauswertung
+
+---
+
+## Analysen
 
 | Metrik | Beschreibung |
 |---|---|
-| **Timing Drift** | Abweichung jeder Note vom nächstgelegenen Grid-Raster in ms |
+| **Timing Drift** | Abweichung jeder Note vom nächstgelegenen Grid (1/16tel) in ms |
 | **Swing Factor** | Verhältnis der Achtel-Offbeats zum Grid |
 | **Tempo / BPM** | Geschätztes Tempo aus Notenabständen |
 | **Drift Histogram** | Verteilung der Drift-Werte über alle Noten |
 | **Velocity Spread** | Anschlagsdynamik (laut/leise) über die Zeit |
-| **Polyphony** | Gleichzeitige Noten (Griffgröße) |
+| **Polyphony** | Gleichzeitige Noten (Griffgröße, Mehrstimmigkeit) |
 | **Focus Score** | Gewichteter Qualitätsindex aus Drift, Velocity, Polyphonie |
 | **Sliding Tempo** | Tempo-Entwicklung innerhalb einer Session |
-| **Style Classification** | Automatische Kategorisierung (melodisch/rhythmisch/polyphon) |
+| **Style Classification** | Kategorisierung (melodisch/rhythmisch/polyphon/hybrid) |
 | **Pedal Analysis** | Nutzung des Sustain-Pedals |
-| **Teacher/Student Split** | Gegenüberstellung von Lehrer- und Schülereinspielungen |
+| **Teacher/Student Split** | k-means-Clustering (k=2) zur Trennung von Lehrer- und Schülernoten |
+| **Skalen-Verteilung** | Tonarten (Dur/Moll/Pentatonisch) inkl. Percussion-Klassifikation |
 | **Kalenderansicht** | Tägliche Drift-Entwicklung als Heatmap |
 | **Progression Chart** | Metrik-Entwicklung über alle Sessions |
 | **Session Comparison** | Side-by-Side Vergleich zweier Sessions |
+| **Einzelschüler-Ansicht** | Fortschritt pro Schüler mit Lehrer/Schüler-Drift |
 
 ---
 
@@ -52,59 +78,33 @@ Der Schüler spielte täglich auf einem digitalen Piano (Yamaha), das MIDI-Daten
 └───────┼──────────────────────────────────┘
         │
 ┌───────▼──────────────────────────────────┐
-│      Supabase PostgreSQL (oder SQLite)    │
-│         Connection Pooler (pgbouncer)      │
+│         SQLite (lokal, /data/sessions.db) │
+│   ~41 Sessions, >1,3 Mio Noten            │
 └───────────────────────────────────────────┘
 ```
 
-### Container (Docker)
-
-- Single-Container-Architektur: Python FastAPI serviert sowohl die REST-API als auch das gebaute React-Frontend (statische Dateien)
-- Kein nginx — FastAPI übernimmt Static-File-Serving und Routing
-- Port 80 (Container) → Port 8090 (Host)
-- Axinio Proxy: `/api/axinio/*` → `host.docker.internal:8081`
+**Container (Docker):** Single-Container, Python FastAPI serviert API + React-SPA statische Dateien. Kein nginx.
 
 ---
 
-## Datenstruktur (PostgreSQL)
+## Datenhaltung
 
-Jede Session wird als ein Datensatz in `sessions` gespeichert mit:
-- **Metadaten:** Dateiname, Datum, Tempo, BPM, Notenanzahl
-- **Analysedaten als JSON-Felder:** Velocity Spread, Polyphonie, Sliding Tempo, Pedalanalyse
-- **Noten:** Alle 200k+ MIDI-Events als serialisiertes JSON-Array (lazy-loaded)
-
-```sql
-CREATE TABLE sessions (
-    id TEXT PRIMARY KEY,
-    file_name TEXT UNIQUE NOT NULL,
-    session_date TEXT,
-    tempo REAL, estimated_bpm REAL,
-    notes_count INTEGER,
-    avg_velocity REAL, avg_drift_ms REAL, avg_swing REAL,
-    estimated_key TEXT,
-    style_category TEXT, structure_category TEXT,
-    focus_score REAL,
-    notes_json TEXT,             -- Lazy-loaded (kann >50MB sein)
-    teacher_student_json TEXT,
-    velocity_spread_json TEXT,
-    polyphony_json TEXT,
-    sliding_tempo_json TEXT,
-    pedal_analysis_json TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
+| Aspekt | Lösung |
+|---|---|
+| Datenbank | SQLite (Datei in Docker-Volume `/data/sessions.db`, ~539MB) |
+| Backup | Docker-Volume `midi_data` |
+| Cloud | Supabase-Code vorhanden, aber nicht aktiv |
+| Lazy-Loading | `notes_json`, `sliding_tempo_json`, `pedal_analysis_json` werden nur bei Auswahl einer Session geladen |
 
 ---
 
-## Dark Theme
+## Entwicklungsetappen
 
-Die gesamte UI verwendet ein einheitliches dunkles Farbschema, definiert in `src/theme.ts`:
-
-- **Hintergrund:** slate-950 / slate-900
-- **Text:** slate-100 / slate-200 / slate-400
-- **Border:** slate-700 / slate-600
-- **Akzente:** indigo, emerald, violet, amber, rose
-- **Chart-Farben:** auf dark abgestimmte Gradienten und Grid-Linien
+1. **Prototyp** — Google AI Studio (erster Entwurf)
+2. **Firebase** — Datenmodell + erste Metriken (zu teuer, 1MB-Limit)
+3. **Eigenes Backend** — Python FastAPI + SQLite + Docker
+4. **Supabase** — Testweise PostgreSQL-Migration (für Cloud-Deployment evaluiert)
+5. **Aktuell:** Zurück auf SQLite — lokaler Docker-Server ist die richtige Infrastruktur
 
 ---
 
